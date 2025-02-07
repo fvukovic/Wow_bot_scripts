@@ -12,10 +12,7 @@ pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tessera
 
 # Lista koordinata koje bot treba slijediti
 coordinates_data = [
-    {"x": 52.45, "y": 38.93},
-    {"x": 52.46, "y": 38.77},
-    {"x": 52.50, "y": 38.50},
-    {"x": 52.55, "y": 38.30}
+    {"x": 55.17, "y": 37.45}
 ]
 
 # Postavke ekrana za snimanje koordinata za Ficin laptop
@@ -60,7 +57,7 @@ def move_to_target(target_x, target_y):
                 print(f"Trenutne koordinate: {current_x}, {current_y}")
 
                 # Ako smo dovoljno blizu cilju, prekini petlju
-                if abs(current_x - target_x) < 0.02 and abs(current_y - target_y) < 0.02:
+                if abs(current_x - target_x) < 1 and abs(current_y - target_y) < 1:
                     print(f"Dosegnuta ciljna točka: {target_x}, {target_y}")
                     pydirectinput.keyUp("w")
                     pydirectinput.keyUp("a")
@@ -68,20 +65,20 @@ def move_to_target(target_x, target_y):
                     break
 
                 # Svakih 5 sekundi provjeri smjer
-                if time.time() - last_adjustment_time >= 5:
+                if time.time() - last_adjustment_time >= 1:
                     last_adjustment_time = time.time()  # Resetiraj timer
 
                     if last_x is not None and last_y is not None:
                         if is_moving_correctly(last_x, last_y, current_x, current_y, target_x, target_y):
                             print("✅ Smjer je dobar, ne diram A/D.")
                         else:
-                            if current_x < target_x - 0.02:  # Treba skrenuti desno
+                            if current_x < target_x - 0.05:  # Treba skrenuti desno
                                 print("⚠️ Skrećem desno (D)")
                                 pydirectinput.keyDown("d")
                                 time.sleep(0.1)
                                 pydirectinput.keyUp("d")
 
-                            elif current_x > target_x + 0.02:  # Treba skrenuti lijevo
+                            elif current_x > target_x + 0.05:  # Treba skrenuti lijevo
                                 print("⚠️ Skrećem lijevo (A)")
                                 pydirectinput.keyDown("a")
                                 time.sleep(0.1)
