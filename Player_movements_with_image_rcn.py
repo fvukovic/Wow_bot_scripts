@@ -18,7 +18,7 @@ coordinates_data = [
     {"x": 52.55, "y": 38.30}
 ]
 
-# Postavke ekrana za snimanje koordinata
+# Postavke ekrana za snimanje koordinata za Ficin laptop
 monitor = {"top": 1500, "left": 67, "width": 207, "height": 35}
 
 def extract_coordinates(img):
