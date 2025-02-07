@@ -15,3 +15,10 @@ ZADACI
 
 IDEJE
 Nebo je granica hheheh
+
+
+
+
+Kretnja...
+Ako ides prema N, desna koordinata pada
+ako ides prema istoku, lijeva koordinata raste

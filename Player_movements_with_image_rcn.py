@@ -1,72 +1,108 @@
 import pytesseract
-import pyautogui
-import mss 
+import mss
 import numpy
 from PIL import Image
 import cv2
 import re
+import time
+import pydirectinput
 
-# Set the tesseract command path (if necessary)
-# For Windows:
-pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+# Postavljanje Tesseract OCR puta
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# Load the image using OpenCV or PIL
-image_path = 'C:\\Users\\Lenovo\\Pictures\\Screenshots\\Snimka zaslona 2025-02-06 200337.png'  # Replace with your image path
-image = cv2.imread(image_path)
+# Lista koordinata koje bot treba slijediti
+coordinates_data = [
+    {"x": 52.45, "y": 38.93},
+    {"x": 52.46, "y": 38.77},
+    {"x": 52.50, "y": 38.50},
+    {"x": 52.55, "y": 38.30}
+]
 
-# Convert the image to grayscale for better accuracy in OCR
-gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+# Postavke ekrana za snimanje koordinata
+monitor = {"top": 1500, "left": 67, "width": 207, "height": 35}
 
-# Apply thresholding to make the white text more prominent against the black background
-_, thresh_image = cv2.threshold(gray_image, 150, 255, cv2.THRESH_BINARY_INV)
+def extract_coordinates(img):
+    """Ekstrahira koordinate iz slike koristeći OCR."""
+    gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh_image = cv2.threshold(gray_image, 150, 255, cv2.THRESH_BINARY_INV)
+    text = pytesseract.image_to_string(thresh_image)
+    coordinates_pattern = r'(\d+\.\d+),\s*(\d+\.\d+)'
+    matches = re.findall(coordinates_pattern, text)
+    
+    if matches:
+        return float(matches[0][0]), float(matches[0][1])
+    return None
 
-# Use pytesseract to extract text from the processed image
-text = pytesseract.image_to_string(thresh_image)
+def is_moving_correctly(prev_x, prev_y, curr_x, curr_y, target_x, target_y):
+    """Provjerava idemo li u pravom smjeru prema cilju."""
+    moving_towards_x = (target_x - prev_x) * (curr_x - prev_x) > 0
+    moving_towards_y = (target_y - prev_y) * (curr_y - prev_y) > 0
+    return moving_towards_x and moving_towards_y
 
-# Regular expression pattern to match coordinates in the format xx.xx, yy.yy
-coordinates_pattern = r'(\d+\.\d+),\s*(\d+\.\d+)'
+def move_to_target(target_x, target_y):
+    """Kretanje prema ciljnim koordinatama uz pamćenje smjera."""
 
-# Find all matches in the extracted text
-coordinates = re.findall(coordinates_pattern, text)
+    # Drži W stalno pritisnut
+    pydirectinput.keyDown("w")
+    print("Držim W (kretanje naprijed)...")
 
-# Print the extracted coordinates
-for coord in coordinates:
-    print(f"Extracted coordinates: {coord[0]}, {coord[1]}")
+    last_adjustment_time = time.time()  # Zadnji put kad smo prilagodili smjer
+    last_x, last_y = None, None  # Posljednje koordinate za provjeru smjera
 
+    with mss.mss() as sct:
+        while True:
+            img = numpy.array(sct.grab(monitor))
+            cv2.imshow("Current Position", img)
 
-w,h = pyautogui.size()
-print("Screen res: W: " + str(w) + " h:" + str(h))
-img = None
-monitor = {"top": 1000, "left": 21, "width": 138, "height": 25}
-with mss.mss() as sct:
-    while True:
-        img = sct.grab(monitor)
-        img = numpy.array(img)
+            current_coords = extract_coordinates(img)
+            if current_coords:
+                current_x, current_y = current_coords
+                print(f"Trenutne koordinate: {current_x}, {current_y}")
 
-        cv2.imshow("Bla bla", img)
-        
-                # Convert the image to grayscale for better accuracy in OCR
-        gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                # Ako smo dovoljno blizu cilju, prekini petlju
+                if abs(current_x - target_x) < 0.02 and abs(current_y - target_y) < 0.02:
+                    print(f"Dosegnuta ciljna točka: {target_x}, {target_y}")
+                    pydirectinput.keyUp("w")
+                    pydirectinput.keyUp("a")
+                    pydirectinput.keyUp("d")
+                    break
 
-        # Apply thresholding to make the white text more prominent against the black background
-        _, thresh_image = cv2.threshold(gray_image, 150, 255, cv2.THRESH_BINARY_INV)
+                # Svakih 5 sekundi provjeri smjer
+                if time.time() - last_adjustment_time >= 5:
+                    last_adjustment_time = time.time()  # Resetiraj timer
 
-        # Use pytesseract to extract text from the processed image
-        text = pytesseract.image_to_string(thresh_image)
+                    if last_x is not None and last_y is not None:
+                        if is_moving_correctly(last_x, last_y, current_x, current_y, target_x, target_y):
+                            print("✅ Smjer je dobar, ne diram A/D.")
+                        else:
+                            if current_x < target_x - 0.02:  # Treba skrenuti desno
+                                print("⚠️ Skrećem desno (D)")
+                                pydirectinput.keyDown("d")
+                                time.sleep(0.1)
+                                pydirectinput.keyUp("d")
 
-        # Regular expression pattern to match coordinates in the format xx.xx, yy.yy
-        coordinates_pattern = r'(\d+\.\d+),\s*(\d+\.\d+)'
+                            elif current_x > target_x + 0.02:  # Treba skrenuti lijevo
+                                print("⚠️ Skrećem lijevo (A)")
+                                pydirectinput.keyDown("a")
+                                time.sleep(0.1)
+                                pydirectinput.keyUp("a")
 
-        # Find all matches in the extracted text
-        coordinates = re.findall(coordinates_pattern, text)
+                    # Ažuriraj zadnje koordinate za sljedeću provjeru
+                    last_x, last_y = current_x, current_y
 
-        # Print the extracted coordinates
-        for coord in coordinates:
-            print(f"Extracted coordinates: {coord[0]}, {coord[1]}")
-        
-        
-        key = cv2.waitKey(1)
-        if key == ord('q'):
-            break
+            key = cv2.waitKey(1)
+            if key == ord('q'):
+                break
 
-cv2.destroyAllWindows()
+            time.sleep(0.1)
+
+    pydirectinput.keyUp("w")  # Pusti W nakon dolaska na cilj
+    cv2.destroyAllWindows()
+
+# Ovo sam stavio tek toliko da krene nakon 3 sekunde, da mogu prebacit prozor
+time.sleep(3)
+
+# Glavna petlja - prolazak kroz sve ciljne koordinate
+for point in coordinates_data:
+    move_to_target(point["x"], point["y"])
+    time.sleep(1)
