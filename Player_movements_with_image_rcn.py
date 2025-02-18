@@ -84,18 +84,17 @@ def move_to_target(target_x, target_y):
             print(f"📍 Trenutne koordinate: {current_x}, {current_y}, Orijentacija: {current_angle}°")
             print(f"🎯 Ciljne koordinate: {target_x}, {target_y}")
 
-            target_angle = calculate_angle_to_target(current_x, current_y, target_x, target_y) 
+            target_angle = calculate_angle_to_target(current_x, current_y, target_x, target_y)
+            win32api.keybd_event(win32con.VK_UP, 0, 0, 0)
             rotate_towards_target(current_angle, target_angle)
             
             print("🚀 Krećem naprijed (W)")
-            pydirectinput.keyDown("w")
 
             prev_x, prev_y = current_x, current_y
             vrijeme_zadnje_provjere = time.time()
             failed_attempts = 0  # Broji koliko puta kalibracija nije pomogla
 
             while True:
-                time.sleep(0.5)  # Pauza da ne skenira prečesto
                 img_coords = numpy.array(sct.grab(monitor_coordinates))
                 current_coords = extract_coordinates(img_coords)
                 
@@ -126,7 +125,7 @@ def move_to_target(target_x, target_y):
                                 failed_attempts += 1
                                 if failed_attempts >= 2:  
                                     print("⛔ Zapelo! Radim zaokret od 180° i skačem...")
-                                    target_angle = (target_angle + 180) % 360
+                                    target_angle = (target_angle + 90) % 360
                                     rotate_towards_target(current_angle, target_angle)
                                     jump()
                                     failed_attempts = 0  
@@ -136,6 +135,8 @@ def move_to_target(target_x, target_y):
 
                         prev_x, prev_y = current_x, current_y
                         vrijeme_zadnje_provjere = time.time()
+                time.sleep(0.5)  # Pauza da ne skenira prečesto
+
 
             print("🎯 Cilj postignut, nastavljam dalje...")
             
@@ -143,4 +144,5 @@ time.sleep(3)
 
 for point in coordinates_data:
     move_to_target(point["x"], point["y"])
-    time.sleep(1)  
+
+win32api.keybd_event(win32con.VK_UP, 0, win32con.KEYEVENTF_KEYUP, 0)  
