@@ -1,0 +1,22 @@
+import json
+import re
+
+# Čitanje Lua-style podataka iz fajla
+with open("coordinates.lua", "r", encoding="utf-8") as file:
+    content = file.read()
+
+# Ekstrakcija koordinata pomoću regexa
+pattern = re.findall(r'\{\s*"(\d+\.\d+)",\s*-- \[\d+\]\s*"(\d+\.\d+)"', content)
+
+# Konvertiranje u željeni format
+coordinates_data = [{"x": float(x), "y": float(y)} for x, y in pattern]
+
+# Pretvorba u JSON string s formatiranjem
+json_output = json.dumps(coordinates_data, indent=4)
+
+# Ispis JSON-a
+print(json_output)
+
+# Spremanje JSON podataka u fajl
+with open("coordinates.json", "w", encoding="utf-8") as f:
+    f.write(json_output)

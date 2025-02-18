@@ -1,21 +1,33 @@
 import pytesseract
 import mss
 import numpy
-from PIL import Image
 import cv2
 import re
 import time
 import pydirectinput
 import math
+import win32api
+import win32con
+import json
+import os
+import random  # Dodano za nasumične skokove
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 monitor_compass = {"top": 1500, "left": 67, "width": 207, "height": 35}
 monitor_coordinates = {"top": 1444, "left": 100, "width": 207, "height": 35}
+ 
+def load_coordinates_from_json():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(script_dir, "coordinates.json")
+    try:
+        with open(json_path, "r") as file:
+            return json.load(file)
+    except Exception as e:
+        print(f"Error loading JSON file: {e}")
+        return []
 
-rotation_time_per_360 = 1.9  # Vrijeme potrebno za punu rotaciju (360°)
-
-coordinates_data = [{"x": 26.00, "y": 50.00}]
+coordinates_data = load_coordinates_from_json()
 
 def extract_coordinates(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -30,79 +42,105 @@ def extract_direction(img):
     processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, numpy.ones((1, 1), numpy.uint8))
     text = pytesseract.image_to_string(processed, config='--psm 7')
     match = re.search(r'(\d+\.\d+|\d+)', text)  
- 
     return float(match.group(1)) if match else None
 
-def calculate_angle_to_target(lat1, lon1, lat2, lon2):
-
-    print(lon1, lat1, lon2, lat2)
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    delta_lon = lon2 - lon1
-
-    x = math.sin(delta_lon) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(delta_lon))
-
-    initial_bearing = math.atan2(x, y)
-    initial_bearing = math.degrees(initial_bearing)
-    print((initial_bearing + 360) % 360)
-    return (initial_bearing + 360) % 360  # Normalize to 0°–360°
+def calculate_angle_to_target(x1, y1, x2, y2):
+    delta_x = x2 - x1  
+    delta_y = y2 - y1  
+    angle = math.degrees(math.atan2(delta_x, -delta_y))  
+    return (angle + 360) % 360  
 
 def rotate_towards_target(current_angle, target_angle):
-    """Okreće lika u pravom smjeru uzimajući u obzir WoW sustav."""
-    angle_diff = ((target_angle - current_angle + 180) % 360) - 180  # Ispravljena formula
+    angle_diff = abs(((target_angle - current_angle + 180) % 360) - 180)  
+    rotation_time = angle_diff / 134.83  
 
-    print(f"🔍 Kutna razlika (nakon ispravke): {angle_diff}°")  # Debug ispis
-    
-    rotation_time = abs(angle_diff) / 360 * rotation_time_per_360
-
-    if angle_diff < 2:  # Skretanje LIJEVO (A)
+    if ((target_angle - current_angle) % 360) < 180:  
+        print(f"🔄 Skrećem desno (D) za {angle_diff:.1f}° ({rotation_time:.2f}s)")
+        press_key("d", rotation_time)
+    else:  
         print(f"🔄 Skrećem lijevo (A) za {angle_diff:.1f}° ({rotation_time:.2f}s)")
-        pydirectinput.keyDown("a")
-        time.sleep(rotation_time)
-        pydirectinput.keyUp("a")
-    elif angle_diff > -2:  # Skretanje DESNO (D)
-        print(f"🔄 Skrećem desno (D) za {-angle_diff:.1f}° ({rotation_time:.2f}s)")
-        pydirectinput.keyDown("d")
-        time.sleep(rotation_time)
-        pydirectinput.keyUp("d")
+        press_key("a", rotation_time)
+
+def press_key(key, duration):
+    vk_code = win32con.VK_LEFT if key == "a" else win32con.VK_RIGHT  
+    win32api.keybd_event(vk_code, 0, 0, 0)  
+    time.sleep(duration)
+    win32api.keybd_event(vk_code, 0, win32con.KEYEVENTF_KEYUP, 0)  
+
+def jump():
+    """Simulira skok pritiskom na SPACE."""
+    print("🦘 Skočim (SPACE)")
+    pydirectinput.press("space")
 
 def move_to_target(target_x, target_y):
-    """Okreće lika prema cilju i zatim se kreće naprijed."""
     with mss.mss() as sct:
         img_coords = numpy.array(sct.grab(monitor_coordinates))
         img_compass = numpy.array(sct.grab(monitor_compass)) 
         current_coords = extract_coordinates(img_coords)
         current_angle = extract_direction(img_compass)
-        
+
         if current_coords and current_angle is not None:
             current_x, current_y = current_coords
-            print(f"Trenutne koordinate: {current_x}, {current_y}, Orijentacija: {current_angle}°")
-            
-            target_angle = calculate_angle_to_target(current_y,current_x , target_y, target_x) 
+            print(f"📍 Trenutne koordinate: {current_x}, {current_y}, Orijentacija: {current_angle}°")
+            print(f"🎯 Ciljne koordinate: {target_x}, {target_y}")
 
+            target_angle = calculate_angle_to_target(current_x, current_y, target_x, target_y) 
             rotate_towards_target(current_angle, target_angle)
             
             print("🚀 Krećem naprijed (W)")
-            #pydirectinput.keyDown("w")
-            
+            pydirectinput.keyDown("w")
+
+            prev_x, prev_y = current_x, current_y
+            vrijeme_zadnje_provjere = time.time()
+            failed_attempts = 0  # Broji koliko puta kalibracija nije pomogla
+
             while True:
+                time.sleep(0.5)  # Pauza da ne skenira prečesto
                 img_coords = numpy.array(sct.grab(monitor_coordinates))
                 current_coords = extract_coordinates(img_coords)
                 
                 if current_coords:
                     current_x, current_y = current_coords
-                    print(f"📍 Koordinate: {current_x}, {current_y}")
-                    
-                    if abs(current_x - target_x) < 1 and abs(current_y - target_y) < 1:
-                        print(f"🎯 Dosegnuta ciljna točka: {target_x}, {target_y}")
-                        break
-                
-                time.sleep(0.2)
-            
-            pydirectinput.keyUp("w")
+                    print(f"📍 Trenutne koordinate: {current_x}, {current_y}")
 
+                    if abs(current_x - target_x) < 0.3 and abs(current_y - target_y) < 0.3:
+                        print(f"✅ Dosegnuta ciljna točka: {target_x}, {target_y}")
+                        break
+                    
+                    if time.time() - vrijeme_zadnje_provjere > 2:  
+                        trenutna_udaljenost = math.sqrt((current_x - target_x) ** 2 + (current_y - target_y) ** 2)
+                        prosla_udaljenost = math.sqrt((prev_x - target_x) ** 2 + (prev_y - target_y) ** 2)
+
+                        if trenutna_udaljenost >= prosla_udaljenost:
+                            print("⚠️ Ne približavam se cilju! Ponovno izračunavam smjer...")
+                            img_compass = numpy.array(sct.grab(monitor_compass))
+                            current_angle = extract_direction(img_compass)
+
+                            if current_angle is not None:
+                                target_angle = calculate_angle_to_target(current_x, current_y, target_x, target_y)
+                                rotate_towards_target(current_angle, target_angle)
+
+                                if random.random() < 0.5:  
+                                    jump()  
+
+                                failed_attempts += 1
+                                if failed_attempts >= 2:  
+                                    print("⛔ Zapelo! Radim zaokret od 180° i skačem...")
+                                    target_angle = (target_angle + 180) % 360
+                                    rotate_towards_target(current_angle, target_angle)
+                                    jump()
+                                    failed_attempts = 0  
+
+                        else:
+                            failed_attempts = 0  
+
+                        prev_x, prev_y = current_x, current_y
+                        vrijeme_zadnje_provjere = time.time()
+
+            print("🎯 Cilj postignut, nastavljam dalje...")
+            
 time.sleep(3)
 
 for point in coordinates_data:
     move_to_target(point["x"], point["y"])
-    time.sleep(1)
+    time.sleep(1)  
