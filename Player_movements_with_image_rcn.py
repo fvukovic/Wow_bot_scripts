@@ -118,13 +118,13 @@ def move_to_target(target_x, target_y):
                             if current_angle is not None:
                                 target_angle = calculate_angle_to_target(current_x, current_y, target_x, target_y)
                                 rotate_towards_target(current_angle, target_angle)
-
-                                if random.random() < 0.5:  
-                                    jump()  
+                                
+                                #neka malo skoci heheh
+                                jump()
 
                                 failed_attempts += 1
                                 if failed_attempts >= 2:  
-                                    print("⛔ Zapelo! Radim zaokret od 180° i skačem...")
+                                    print("⛔ Zapelo! Radim zaokret od 90° i skačem...")
                                     target_angle = (target_angle + 90) % 360
                                     rotate_towards_target(current_angle, target_angle)
                                     jump()
